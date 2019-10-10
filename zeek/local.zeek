@@ -41,7 +41,7 @@
 @load protocols/http/software
 # The detect-webapps script could possibly cause performance trouble when
 # running on live traffic.  Enable it cautiously.
-#@load protocols/http/detect-webapps
+@load protocols/http/detect-webapps
 
 # This script detects DNS results pointing toward your Site::local_nets
 # where the name is not part of your local DNS zone and is being hosted
@@ -64,7 +64,7 @@
 
 # Uncomment the following line to check each SSL certificate hash against the ICSI
 # certificate notary service; see http://notary.icsi.berkeley.edu .
-# @load protocols/ssl/notary
+@load protocols/ssl/notary
 
 # If you have GeoIP support built in, do some geographic detections and
 # logging for SSH traffic.
@@ -90,12 +90,37 @@
 
 # Uncomment the following line to enable detection of the heartbleed attack. Enabling
 # this might impact performance a bit.
-# @load policy/protocols/ssl/heartbleed
+@load policy/protocols/ssl/heartbleed
 
 # Uncomment the following line to enable logging of connection VLANs. Enabling
 # this adds two VLAN fields to the conn.log file.
-# @load policy/protocols/conn/vlan-logging
+@load policy/protocols/conn/vlan-logging
 
 # Uncomment the following line to enable logging of link-layer addresses. Enabling
 # this adds the link-layer address for each connection endpoint to the conn.log file.
-# @load policy/protocols/conn/mac-logging
+@load policy/protocols/conn/mac-logging
+
+# Custom conn geoip enrichment
+@load geodata/conn-add-geodata.bro
+# Log all plain-text http/ftp passwords
+@load passwords/log-passwords.bro
+
+@load file-extraction
+
+# JSON Plugin
+# @load json-streaming-logs
+# redef JSONStreaming::disable_default_logs=T;
+redef LogAscii::use_json=T;
+
+# Apache Kafka Plugin
+@load-plugin Apache::Kafka                              
+@load Apache/Kafka/
+                                      
+redef Kafka::send_all_active_logs = T;
+redef Kafka::topic_name = "zeek";
+redef Kafka::kafka_conf = table(
+    ["metadata.broker.list"] = "172.17.0.1:9092"
+);
+
+# Enable Kafka Plugin Debugging
+# redef Kafka::debug = "all";

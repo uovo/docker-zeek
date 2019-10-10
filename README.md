@@ -1,58 +1,34 @@
-![bro-logo](https://github.com/blacktop/docker-zeek/raw/master/docs/logo.png)
-
 # docker-zeek
 
-[![CircleCI](https://circleci.com/gh/blacktop/docker-zeek.png?style=shield)](https://circleci.com/gh/blacktop/docker-zeek) [![License](http://img.shields.io/:license-mit-blue.svg)](http://doge.mit-license.org) [![Docker Stars](https://img.shields.io/docker/stars/blacktop/zeek.svg)](https://hub.docker.com/r/blacktop/zeek/) [![Docker Pulls](https://img.shields.io/docker/pulls/blacktop/zeek.svg)](https://hub.docker.com/r/blacktop/zeek/) [![Docker Image](https://img.shields.io/badge/docker%20image-39MB-blue.svg)](https://hub.docker.com/r/blacktop/zeek/)
-
-> [Zeek Network Security Monitor](https://github.com/zeek/zeek) Dockerfile
-
+> [Zeek Network Security Monitor with Kafka Integration](https://github.com/zeek/zeek) Dockerfile
+> Based on work by [blacktop](https://github.com/blacktop/docker-zeek)
 ---
 
 **Table of Contents**
 
 - [Dependencies](#dependencies)
-- [Image Tags](#image-tags)
 - [Installation](#installation)
 - [Getting Started](#getting-started)
-- [Documentation](#documentation)
-- [Issues](#issues)
 - [License](#license)
 
 ## Dependencies
 
 - [alpine:3.10](https://hub.docker.com/_/alpine/)
 
-## Image Tags
-
-```bash
-$ docker images
-
-REPOSITORY           TAG          SIZE
-blacktop/zeek        latest       39MB
-blacktop/zeek        3.0          39MB
-blacktop/zeek        elastic      100MB
-blacktop/zeek        kafka        43.4MB
-blacktop/zeek        zeekctl      84MB
-```
-
 ## Installation
 
 1. Install [Docker](https://docs.docker.com).
-2. Download [trusted build](https://hub.docker.com/r/blacktop/zeek/) from public [Docker Registry](https://hub.docker.com): `docker pull blacktop/zeek`
+1. Clone this repository
+1. `docker-compose -f docker-compose.yml up --build`
 
 ## Getting Started
 
-```bash
-$ wget https://github.com/blacktop/docker-zeek/raw/master/pcap/heartbleed.pcap
-$ wget https://github.com/blacktop/docker-zeek/raw/master/3.0/local.zeek
-$ docker run --rm \
-         -v `pwd`:/pcap \
-         -v `pwd`/local.zeek:/usr/local/zeek/share/zeek/site/local.zeek \  # All default modules loaded
-         blacktop/zeek -r heartbleed.pcap local "Site::local_nets += { 192.168.11.0/24 }"
-```
+- Adjust your Zeek interface in `docker-compose.yml`
+
+Zeek alerts will be logged into Kafka as well as files in the `pcap` directory
 
 ```bash
-$ ls -l
+$ ls -l pcap
 
 -rw-r--r--  1 blacktop  staff   635B Jul 30 12:11 conn.log
 -rw-r--r--  1 blacktop  staff   754B Jul 30 12:11 files.log
@@ -74,16 +50,19 @@ Heartbleed::SSL_Heartbeat_Odd_Length
 Heartbleed::SSL_Heartbeat_Attack_Success
 ```
 
-## Documentation
+To test Kafka alerts set up a simple consumer
 
-- [Usage](https://github.com/blacktop/docker-zeek/blob/master/docs/usage.md)
-- [Integrate with the Elasticsearch](https://github.com/blacktop/docker-zeek/blob/master/docs/elastic.md)
-- [Integrate with Kafka](https://github.com/blacktop/docker-zeek/blob/master/docs/kafka.md)
-- [Tips and Tricks](https://github.com/blacktop/docker-zeek/blob/master/docs/tips-and-tricks.md)
+```python
+import json
+from kafka import KafkaConsumer
 
-## Issues
+consumer = KafkaConsumer('zeek', bootstrap_servers=['172.17.0.1:9092'],
+     value_deserializer=lambda x: json.loads(x.decode('utf-8')))
 
-Find a bug? Want more features? Find something missing in the documentation? Let me know! Please don't hesitate to [file an issue](https://github.com/blacktop/docker-zeek/issues/new) and I'll get right on it.
+# Now lets process our Kafka Messages
+for message in consumer:
+    print(message.value)
+```
 
 ## License
 

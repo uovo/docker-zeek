@@ -1,13 +1,14 @@
 FROM alpine:3.10 as builder
 
-LABEL maintainer "https://github.com/blacktop"
+LABEL maintainer "https://github.com/uovo"
 
-ENV ZEEK_VERSION 3.0.0-rc2
+ENV ZEEK_VERSION 3.0.0
 
 RUN apk add --no-cache zlib openssl libstdc++ libpcap libgcc
 RUN apk add --no-cache -t .build-deps \
   libmaxminddb-dev \
   linux-headers \
+  libsasl \
   openssl-dev \
   libpcap-dev \
   python-dev \
@@ -23,6 +24,7 @@ RUN apk add --no-cache -t .build-deps \
   make \
   flex \
   git \
+  gcc \
   g++ \
   fts
 
@@ -57,17 +59,31 @@ RUN echo "===> Installing hosom/file-extraction package..." \
   && find file-extraction -name "*.bro" -exec sh -c 'mv "$1" "${1%.bro}.zeek"' _ {} \; \
   && mv file-extraction/scripts /usr/local/zeek/share/zeek/site/file-extraction
 
-RUN echo "===> Installing apache/metron-bro-plugin-kafka package..." \
-  && cd /tmp/zeek/aux/ \
-  && git clone https://github.com/apache/metron-bro-plugin-kafka.git \
-  && apk add --no-cache librdkafka-dev \
-  && cd /tmp/zeek/aux/metron-bro-plugin-kafka \
-  && find . -name "*.bro" -exec sh -c 'mv "$1" "${1%.bro}.zeek"' _ {} \; \
-  && CC=clang ./configure --bro-dist=/tmp/zeek \
-  && make -j 2 \
-  && make install
+RUN echo "===> Installing corelight/json-streaming-logs package..." \
+  && cd /tmp \
+  && git clone https://github.com/corelight/json-streaming-logs.git json-streaming-logs \
+  && find json-streaming-logs -name "*.bro" -exec sh -c 'mv "$1" "${1%.bro}.zeek"' _ {} \; \
+  && mv json-streaming-logs/scripts /usr/local/zeek/share/zeek/site/json-streaming-logs
 
-RUN echo "===> Check if kafka plugin installed..." && /usr/local/zeek/bin/zeek -N Apache::Kafka
+RUN echo "===> Installing Kafka PreReqs..." \
+  && cd /tmp/ \
+  && curl -L https://github.com/edenhill/librdkafka/archive/v0.11.5.tar.gz | tar xvz \
+  && cd librdkafka-0.11.5/ \
+  && ./configure --enable-sasl --prefix=/usr/local/zeek \
+  && make -j4 \
+  && make install
+  
+RUN echo "===> Installing Kafka plugin..." \
+  && cd /tmp \
+  && git clone https://github.com/apache/metron-bro-plugin-kafka.git \
+  && find metron-bro-plugin-kafka -name "*.bro" -exec sh -c 'mv "$1" "${1%.bro}.zeek"' _ {} \; \
+  && cd metron-bro-plugin-kafka \
+  && ./configure \
+  --bro-dist=/tmp/zeek \
+  --with-librdkafka=/usr/local/zeek/ \
+  && make -j4 \
+  && make install \
+  && /usr/local/zeek/bin/zeek -NN Apache::Kafka
 
 RUN echo "===> Shrinking image..." \
   && strip -s /usr/local/zeek/bin/zeek
@@ -75,11 +91,29 @@ RUN echo "===> Shrinking image..." \
 RUN echo "===> Size of the Zeek install..." \
   && du -sh /usr/local/zeek
 ####################################################################################################
+FROM alpine:3.10 as geoip
+
+ENV MAXMIND_CITY https://geolite.maxmind.com/download/geoip/database/GeoLite2-City.tar.gz
+ENV MAXMIND_CNTRY https://geolite.maxmind.com/download/geoip/database/GeoLite2-Country.tar.gz
+ENV MAXMIND_ASN http://geolite.maxmind.com/download/geoip/database/GeoLite2-ASN.tar.gz
+ENV GITHUB_CITY https://github.com/blacktop/docker-zeek/raw/master/maxmind/GeoLite2-City.tar.gz
+ENV GITHUB_CNTRY https://github.com/blacktop/docker-zeek/raw/master/maxmind/GeoLite2-Country.tar.gz
+
+# Install the GeoIPLite Database
+RUN cd /tmp \
+  && mkdir -p /usr/share/GeoIP \
+  && wget ${GITHUB_CITY} \
+  && tar xzvf GeoLite2-City.tar.gz \
+  && mv GeoLite2-City*/GeoLite2-City.mmdb /usr/share/GeoIP/
+  # && wget ${MAXMIND_ASN} \
+  # && tar xzvf GeoLite2-ASN.tar.gz \
+  # && mv GeoLite2-ASN*/GeoLite2-ASN.mmdb /usr/share/GeoIP/
+####################################################################################################
 FROM alpine:3.10
 
 LABEL maintainer "https://github.com/blacktop"
 
-RUN apk --no-cache add ca-certificates zlib openssl libstdc++ libpcap libmaxminddb libgcc fts librdkafka
+RUN apk --no-cache add ca-certificates zlib openssl libstdc++ libpcap libgcc fts libmaxminddb
 
 COPY --from=builder /usr/local/zeek /usr/local/zeek
 COPY local.zeek /usr/local/zeek/share/zeek/site/local.zeek
@@ -89,6 +123,8 @@ ADD https://raw.githubusercontent.com/blacktop/docker-zeek/master/scripts/conn-a
   /usr/local/zeek/share/zeek/site/geodata/conn-add-geodata.zeek
 ADD https://raw.githubusercontent.com/blacktop/docker-zeek/master/scripts/log-passwords.bro \
   /usr/local/zeek/share/zeek/site/passwords/log-passwords.zeek
+
+COPY --from=geoip /usr/share/GeoIP /usr/share/GeoIP
 
 WORKDIR /pcap
 

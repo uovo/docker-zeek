@@ -1,0 +1,35 @@
+version: '3'
+services:
+  zookeeper:
+    image: wurstmeister/zookeeper
+    ports:
+      - "2181:2181"
+    networks:
+      - kafka
+  
+  kafka:
+    image: wurstmeister/kafka:latest
+    depends_on: 
+      - zeek
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_ADVERTISED_HOST_NAME: 172.17.0.1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+    networks:
+      - kafka
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+
+  zeek:
+    build: ./zeek
+    image: uwe/zeek:kafka
+    volumes:
+      - ./pcap:/pcap
+    cap_add:
+      - NET_RAW
+    network_mode: "host"
+    command: -i af_packet::wlp4s0 local "Site::local_nets += { 192.168.11.0/24 }"
+
+networks:
+  kafka:
